@@ -1,0 +1,6 @@
+[submodule "syrenge_cl/pycl/-configr"]
+	path = syrenge_cl/pycl/-configr
+	url = https://gist.github.com/086f24c9a01bb5a508821fae80e190c9.git
+[submodule "syrenge_cl/pycl/configr"]
+	path = syrenge_cl/pycl/configr
+	url = https://gist.github.com/086f24c9a01bb5a508821fae80e190c9.git

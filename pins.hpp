@@ -6,8 +6,8 @@
 
 
 //IR Sensor
-	const unsigned int IR_SENSOR1_RDPIN = 3;
-	const unsigned int IR_SENSOR2_RDPIN = 2;
+	const unsigned int IR_SENSOR1_RDPIN = 6;
+	const unsigned int IR_SENSOR2_RDPIN = 7;
 
 
 	const unsigned int IR_SENSOR1_VCCPIN = 4;
@@ -25,6 +25,9 @@
 //PMT Control Pins
 	const int PMT_CS_PIN = 53;
 
+// Joystick Pins
+	const int JS_X_AXIS_PIN = 2;
+	const int JS_SW_PIN = A5;
 
 //Dedicated DC Vibration motor control pins
 	/** \todo Add pins. */

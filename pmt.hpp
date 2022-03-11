@@ -12,7 +12,7 @@ namespace PMT
 
 
     /** @brief Initalize DAC. */
-    void init_DAC()
+    static void init_DAC()
     {
         PMT::MCP.init();
         PMT::MCP.setGainA(MCP4822:: High);
@@ -23,7 +23,7 @@ namespace PMT
     }
 
     /** @brief Initalized the 16-bit ADC for reading the PMT signals. */
-    void init_ADC()
+    static void init_ADC()
     {
         // Initialize ads1015 at the default address 0x48
         if (!PMT::ADS.begin()) 
@@ -38,13 +38,13 @@ namespace PMT
     }
 
     /** @brief Turn off ADC. (ADS1115) */
-    void stop_ADC()
+    static void stop_ADC()
     {
         // No stop procedure defined yet
     }
 
     /** @brief Turn off DAC (MCP4822). */
-    void stop_DAC()
+    static void stop_DAC()
     {
         PMT::MCP.setVoltageA(0); //Controll voltage off
         PMT::MCP.updateDAC(); //updating DAC
@@ -54,7 +54,7 @@ namespace PMT
     /** @breif Set the reference voltage for PMT to the value `volt`.
      * \attention If the value passed is greater than the `PMT::max_ref_volt`, then an error 
      * is generated and the call is ignored.*/
-    void set_ref_volt(unsigned int volt)
+    static void set_ref_volt(unsigned int volt)
     {
         if(volt > PMT::max_ref_volt)
         {
@@ -75,7 +75,7 @@ namespace PMT
      * @param integn_time_ms Integration time over which the value is averaged.
      * /note At fastest rate the ADC reads 860 samples/s. 
      * This function reads 500 samples/s. */
-    double read(const unsigned int integn_time_ms)
+    static double read(const unsigned int integn_time_ms)
     {
         uint16_t signal = 0;                      // Instantaneous
         double sig_integrated = 0.0;              // Sum

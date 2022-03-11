@@ -27,13 +27,13 @@ String received_str = ""; //!< Stores the string received through serial
 bool completed_parse = false; //!< Flag that indicates internally if the parsing is complete.
 
 
-
 /** @brief Turn ON the electronics and calibrate. */
 void start_exp()
 {
 	//Set PMT
 	//PMT::init_DAC();
 	//PMT::init_ADC();
+	//PMT::set_ref_volt(700);
 
 	//Set LED
 	tone(PULSE_PIN, PULSE_FREQUENCY);
@@ -44,7 +44,8 @@ void start_exp()
 	digitalWrite(IR_SENSOR2_VCCPIN, HIGH);
 
 	stepper.reverse(WHITE_FIELD);
-	spiral_calibrate();
+	spiral_calibrate(); //Do calibration 
+	
 	delay(2000);
 
 	//Start loop operation
@@ -58,10 +59,9 @@ void stop_exp()
 	//Stop loop operation
 	experiment_running = false;
 
-	//Shutdown (DAC) MCP
-
-
-	//Shutdown ADC
+	//Shutdown (DAC) MCP & ADC
+	//PMT::stop_ADC();
+	//PMT::stop_DAC();
 
 
 	//Start IR Sensors
@@ -77,7 +77,7 @@ void stop_exp()
 
 
 	//Calibrate on STOP
-	//calibrate();
+	//spiral_calibrate();
 
 }
 
@@ -126,6 +126,9 @@ void next_sample(unsigned int checkpoints=1)
 /** @brief Sets up pin modes and one time settings. */
 void setup()
 {
+	joystick.init(JS_X_AXIS_PIN, JS_SW_PIN);
+	attachInterrupt(digitalPintoInterrupt(JS_SW_PIN), isr_joystick_sw, CHANGE);
+	
 
 	//LED
 	pinMode(PULSE_PIN, OUTPUT);
@@ -138,8 +141,6 @@ void setup()
 	pinMode(IR_SENSOR2_RDPIN, INPUT);
 
 
-
-
 	//Serial
 	Serial.begin(9600);
 		while(!Serial){}
@@ -148,29 +149,13 @@ void setup()
 	//Stepper Configuration
 	stepper.init(STEPPER_EN_PIN, STEPPER_DIR_PIN, STEPPER_PULSE_PIN);
 	stepper.step_hperiod_ms = 5;
-	
+
 //! testing
 	start_exp();
-	//stepper.reverse(WHITE_FIELD);
-	//stepper.set_dir(stepper.fwd);
-	//stepper.move(500);
-	//next_sample(1);
-	//calibrate();
-	///*stepper.forward(200);
-	//stepper.set_dir(stepper.rev);
-	//next_sample(7);
-	
-	//stepper.set_dir(stepper.rev);
-	//for(unsigned int i = 0; i < 7; i++)
-	//{
-	//	next_sample();
-	//	delay(5000);
-	//}
 	experiment_running = true;
+
+
 	Serial.println("# Setup has ended!");
-
-	Serial.println("# Starting Experment!");
-
 }
 
 
@@ -186,11 +171,8 @@ void loop()
 		for(unsigned int i = 0; i < NO_SAMPLES-1; i++)
 		{
 			int16_t value = 999;//PMT::read(INTEGRATION_TIME_ms);
-			Serial.print(i+1);
-			Serial.print(". ");
 			Serial.print(value);
-			Serial.print('\n');
-
+			Serial.print('\t');
 
 			next_sample(1);
 			delay(5000);
@@ -201,133 +183,33 @@ void loop()
 		Serial.print(value);
 		Serial.print('\n');
 
-
 		//Reverse
 		stepper.set_dir(stepper.rev);
 		next_sample(NO_SAMPLES-1);
 	}
-}
 
 
 
-
-/** @brief Align the optics with the position of sample 1. */
-void calibrate()
-{
-	calibration_run = true;
-
-		int i = 0; //Number of samples covered
-		bool detected = false;
-		//const unsigned int max_steps = SAMPLE_DIST + 200;
-
-		// Initial Reverse
-		stepper.set_dir(stepper.rev);
-		stepper_dir = 0;
-		delay(1000);
-
-		//Forward scan
-		stepper.set_dir(stepper.fwd);
-		stepper_dir = 1;
-		while(!detected && i < NO_SAMPLES)
-		{
-			next_sample(1);
-			if(digitalRead(IR_SENSOR1_RDPIN == HIGH))
-			{
-				detected = true;
-			}
-			i++;
-		}
-
-		//Reverse scan
-		if(!detected)
-		{
-			stepper_dir = 0;
-			stepper.set_dir(stepper.dir*-1);
-			i = 0;
-
-			while(!detected && i < NO_SAMPLES)
-			{
-				next_sample(1);
-				if(digitalRead(IR_SENSOR1_RDPIN == HIGH))
-				{
-					detected = true;
-				}
-				i++;
-			}
-		}
-
-		if(detected)
-		{
-			stepper.pos = 0; //Init stepper position variable.
-			Serial.println("# Calibration successful!");
-		}
-
-		else
-		{
-			calibration_failed = true;
-			Serial.println("# Calibration failed!");
-		}
-
-	calibration_run = false;		
-}
-
-
-
-/** @brief `Interrupt service routine` is launched when a limit switch hit causes an interrupt to fire. */
-void isr_limit_sw_hit()
-{
-	if((millis() - last_limit_hit) >= limit_sw_debounce_time_ms)
+	//In loop
+	if(joystick_control)
 	{
-		if(calibration_run)
+		//Reset joystick buffer for a new session
+		if(new_joyst_session)
 		{
-			//Reverse direction of motor
-			stepper.set_dir(stepper.dir*-1); //Might not work.
-
-			digitalWrite(STEPPER_DIR_PIN, !stepper_dir);
-
+			joystick.reset();
+			new_joyst_session = false;
 		}
 
-		else
-		{
-			//Disable stepper motor
-			stepper.disable();
-			digitalWrite(STEPPER_EN_PIN, LOW);
-		}
+		joystick.read(50, 50);  						// Read joystick state for 50 ms
+		int move_steps = joystick.get_steps(100);		// Number of steps to move -> try for 100.
+		stepper.set_dir(move_steps);					// Set appropriate direction
+		stepper.move(move_steps);						// Execute quantum of steps
+
+		joystick.register_steps(move_steps);			// Update joystick buffer with the number of steps taken.
+
+		delay(5000);
 	}
 }
-
-/** @brief Detection of control codees - {start and stop}. */
-/*void serialEvent() 
-{
-	while (Serial.available() && !completed_parse) 
-	{
-		char c = (char)Serial.read();
-		received_str += c;
-		if (c == '\n') { completed_parse = true; }
-	}
-
-	if(completed_parse)
-	{
-		if (received_str.equals("start\n")) 
-		{	start_exp();
-			completed_parse = false;
-			received_str = "";
-		}
-
-		else if (received_str.equals("stop\n"))
-		{
-			stop_exp();
-			completed_parse = false;
-			received_str = "";
-		}
-
-		else //Unknown command
-		{
-			completed_parse = false;
-			received_str = "";
-		}
-	}
-}*/
 
 
 void spiral_calibrate()
@@ -405,4 +287,72 @@ void spiral_calibrate()
 
 	calibration_run = false;
 
+}
+
+/** @brief Check if this is the first sample by correlating the two sensors. */
+void is_first_sample()
+{
+	if(digitalRead(IR_SENSOR2_RDPIN) == LOW)
+	{
+		delay(500);
+		if(digitalRead(IR_SENSOR1_RDPIN) == HIGH && digitalRead(IR_SENSOR2_RDPIN) == LOW)
+		{ return true; }
+
+		else { return false; }
+	}
+}
+
+
+/** @brief Detection of control codees - {start and stop}. */
+/*void serialEvent() 
+{
+	while (Serial.available() && !completed_parse) 
+	{
+		char c = (char)Serial.read();
+		received_str += c;
+		if (c == '\n') { completed_parse = true; }
+	}
+
+	if(completed_parse)
+	{
+		if (received_str.equals("start\n")) 
+		{	start_exp();
+			completed_parse = false;
+			received_str = "";
+		}
+
+		else if (received_str.equals("stop\n"))
+		{
+			stop_exp();
+			completed_parse = false;
+			received_str = "";
+		}
+
+		else //Unknown command
+		{
+			completed_parse = false;
+			received_str = "";
+		}
+	}
+}*/
+
+
+Joystick1D joystick;
+volatile bool joystick_control = false;				//!< Flag that controls operatiobn of joystick in the code
+volatile unsigned long last_joysw_time_ms = 0; 		//!< Last time the joystick was triggered.
+const unsigned long debounce_time_joysw	= 50;		//!< Debouncing time for the switch.
+volatile new_joyst_session = false;
+void isr_joystick_sw()
+{
+	if (millis() - last_joysw_time_ms < debounce_time_joysw)
+	{
+	
+		joystick_control =  !joystick_control;
+
+		if(joystick_control)
+		{
+			new_joyst_session = true;
+		}
+
+	}
 }
