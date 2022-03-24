@@ -1,8 +1,11 @@
 #include "pins.hpp"
 //#include "pmt.hpp"
 #include "stepper.hpp"
+#include "joystick1D.hpp"
 
 
+//Enable disable Joystick
+#define JOYSTICK_CONTROLS 0 //0 is off, 1 is on.
 
 //Parameters
 unsigned int INTEGRATION_TIME_ms = 1000; //!< Signal integration time for PMT
@@ -25,6 +28,14 @@ volatile int stepper_dir = 1; //!< Volatile stepper direction dupl;icate used us
 // Serial Event variables (used for parsing commands)
 String received_str = ""; //!< Stores the string received through serial
 bool completed_parse = false; //!< Flag that indicates internally if the parsing is complete.
+
+
+//Joystick controls
+JoyStick1D joystick;
+volatile bool joystick_control = false;				//!< Flag that controls operatiobn of joystick in the code
+volatile unsigned long last_joysw_time_ms = 0; 		//!< Last time the joystick was triggered.
+const unsigned long debounce_time_joysw_ms	= 200;		//!< Debouncing time for the switch.
+volatile bool new_joyst_session = false;
 
 
 /** @brief Turn ON the electronics and calibrate. */
@@ -78,6 +89,7 @@ void stop_exp()
 
 	//Calibrate on STOP
 	//spiral_calibrate();
+	Serial.println("Stopping setup!");
 
 }
 
@@ -104,7 +116,7 @@ void next_sample(unsigned int checkpoints=1)
 			
 			if(found)
 			{
-				Serial.println("# Sample found! ");
+				//Serial.println("# Sample found! ");
 				delay(200);
 				stepper.move(int(WHITE_FIELD/2));
 				delay(200);
@@ -112,11 +124,11 @@ void next_sample(unsigned int checkpoints=1)
 			
 			else
 			{
-				Serial.print("# Sample not found! ");
+				//Serial.print("# Sample not found! ");
 			}
 	 		
-	 		Serial.print("# Stepper position: ");
-	 		Serial.println(stepper.pos);
+	 		//Serial.print("# Stepper position: ");
+	 		//Serial.println(stepper.pos);
 	}
 
 	return found;
@@ -126,8 +138,12 @@ void next_sample(unsigned int checkpoints=1)
 /** @brief Sets up pin modes and one time settings. */
 void setup()
 {
-	joystick.init(JS_X_AXIS_PIN, JS_SW_PIN);
-	attachInterrupt(digitalPintoInterrupt(JS_SW_PIN), isr_joystick_sw, CHANGE);
+	pinMode(LED_BUILTIN, OUTPUT);
+	
+	#if JOYSTICK_CONTROLS == 1
+		joystick.init(JS_X_AXIS_PIN, JS_SW_PIN);
+		attachInterrupt(digitalPinToInterrupt(JS_SW_PIN), isr_joystick_sw, CHANGE);
+	#endif
 	
 
 	//LED
@@ -151,8 +167,8 @@ void setup()
 	stepper.step_hperiod_ms = 5;
 
 //! testing
-	start_exp();
-	experiment_running = true;
+	//start_exp();
+	//experiment_running = true;
 
 
 	Serial.println("# Setup has ended!");
@@ -163,7 +179,8 @@ void setup()
 
 void loop()
 {
-	if(experiment_running && !calibration_failed)
+
+	if(experiment_running && !calibration_failed && !joystick_control)
 	{
 		stepper.set_dir(stepper.fwd); //Set direction to forward
 
@@ -190,25 +207,29 @@ void loop()
 
 
 
-	//In loop
-	if(joystick_control)
-	{
-		//Reset joystick buffer for a new session
-		if(new_joyst_session)
+	#if JOYSTICK_CONTROLS == 1
+		//In loop
+		if(joystick_control && !experiment_running)
 		{
-			joystick.reset();
-			new_joyst_session = false;
+			//Reset joystick buffer for a new session
+			if(new_joyst_session)
+			{
+				joystick.reset();
+				new_joyst_session = false;
+				Serial.println("# Joystick Control on!");
+			}
+
+			joystick.read(25, 1);  						// Read joystick state for 50 ms
+			int move_steps = joystick.get_steps(20);		// Number of steps to move -> try for 100.
+			stepper.set_dir(move_steps);					// Set appropriate direction
+			stepper.move(move_steps);						// Execute quantum of steps
+
+			Serial.println(joystick.tpos);
+			joystick.register_steps(joystick.tpos);			// Update joystick buffer with the number of steps taken.
+			
+			//delay(200);
 		}
-
-		joystick.read(50, 50);  						// Read joystick state for 50 ms
-		int move_steps = joystick.get_steps(100);		// Number of steps to move -> try for 100.
-		stepper.set_dir(move_steps);					// Set appropriate direction
-		stepper.move(move_steps);						// Execute quantum of steps
-
-		joystick.register_steps(move_steps);			// Update joystick buffer with the number of steps taken.
-
-		delay(5000);
-	}
+	#endif
 }
 
 
@@ -304,7 +325,7 @@ void is_first_sample()
 
 
 /** @brief Detection of control codees - {start and stop}. */
-/*void serialEvent() 
+void serialEvent() 
 {
 	while (Serial.available() && !completed_parse) 
 	{
@@ -334,25 +355,24 @@ void is_first_sample()
 			received_str = "";
 		}
 	}
-}*/
+}
 
 
-Joystick1D joystick;
-volatile bool joystick_control = false;				//!< Flag that controls operatiobn of joystick in the code
-volatile unsigned long last_joysw_time_ms = 0; 		//!< Last time the joystick was triggered.
-const unsigned long debounce_time_joysw	= 50;		//!< Debouncing time for the switch.
-volatile new_joyst_session = false;
+
 void isr_joystick_sw()
 {
-	if (millis() - last_joysw_time_ms < debounce_time_joysw)
+	unsigned long time_now = millis();
+	if (time_now - last_joysw_time_ms > debounce_time_joysw_ms)
 	{
-	
-		joystick_control =  !joystick_control;
 
-		if(joystick_control)
-		{
-			new_joyst_session = true;
-		}
+			joystick_control =  !joystick_control;
+			digitalWrite(LED_BUILTIN, joystick_control);
+			last_joysw_time_ms = time_now;
+			if(joystick_control)
+			{
+				new_joyst_session = true;
+			}
+		
 
 	}
 }

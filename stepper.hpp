@@ -55,7 +55,7 @@ public:
      *  Recommended use: `stepper.set_dir(stepper.fwd)`.*/
     void set_dir(int dir)
     {
-        this->dir = dir;
+        this->dir = sign(dir);
 
         if(dir < 0)
         {
@@ -79,6 +79,7 @@ public:
     /** @brief Generic function that moves n-steps without setting the direction pin. */
     void move(int n)
     {
+        n = abs(n);
         digitalWrite(enPIN, LOW);
         delay(2);
         
@@ -170,5 +171,14 @@ public:
         delay(2);
         this->move_till(n, monitor_pin, stop_state);
 
+    }
+
+
+private:
+
+    template <typename T>
+    int sign(T x)
+    {
+        return (x > 0) - (x < 0);
     }
 };

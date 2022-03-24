@@ -11,6 +11,7 @@ public:
 
 	int tpos = 0; //!< Target number of steps held by the joystick buffer.
 	unsigned min_correction = 10; //!< Minimum number of steps performed for correction.
+	unsigned int threshold = 50;
 
 	/** @brief Constructor that initalizes the pins of the joysticks. */
 	constexpr JoyStick1D()
@@ -28,7 +29,7 @@ public:
 	/** @brief Update the target from the joystick position. 
 	 * @param read_time_ms Total integration time and also the normalization parameter.
 	 * @param read_cnt Total number of reads performed in `read_time_ms`. */
-	void read(unsigned int read_time_ms , unsigned int read_cnt)
+	void read(const unsigned int read_time_ms, const  unsigned int read_cnt)
 	{
 		
 		int total_readval = 0;
@@ -37,12 +38,15 @@ public:
 		for(unsigned int i = 0; i < read_cnt; i++)
 		{
 			int read_now = analogRead(xPIN);
-			read_now = map(read_now, 0, 1023, -512, 512);
+			Serial.println(read_now);
+			read_now = map(read_now, 0, 1024, -512, 512);
+			read_now = read_now * (abs(read_now) > this->threshold);
+			
 			total_readval += read_now;
 			delay(wait_time_ms);
 		}
 		
-		tpos += total_readval/read_time_ms;
+		tpos += int(total_readval/read_time_ms)*sign(total_readval);
 		
 		Serial.print("# Updated target: ");
 		Serial.println(tpos);
@@ -60,7 +64,8 @@ public:
 	{
 		if(hint == 0)
 		{
-			hint = min_correction;
+			hint = min_correction * (abs(tpos) > 0) * sign(tpos);
+
 		}
 
 		if(abs(tpos) > hint)
@@ -84,9 +89,9 @@ public:
 private:
 
 	template <typename T>
-	void sign(T x)
+	int sign(T x)
 	{
-		return (x > 0) - (x < 0);
+		return (int(x) > 0) - (int(x) < 0);
 	}
 };
 
